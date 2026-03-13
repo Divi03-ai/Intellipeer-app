@@ -25,9 +25,7 @@ app.use(express.static('public'));
 if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
 
 // MongoDB Connection
-mongoose.connect('mongodb://127.0.0.1:27017/intellipeer')
-    .then(() => console.log("DB Connected ✅"))
-    .catch(err => console.error("DB Error:", err));
+
 
 // --- SCHEMAS ---
 const User = mongoose.model('User', new mongoose.Schema({
