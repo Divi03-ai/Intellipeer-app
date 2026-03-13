@@ -9,8 +9,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve uploaded files publicly
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files from public directory
+app.use(express.static('public'));
 
 // Ensure upload directory exists
 if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
