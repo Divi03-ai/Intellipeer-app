@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelliPeer | Skill Swapping</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #ea3ed3;
+            --bg: #e2b3e7;
+            --text: #040709;
+            --sidebar: #e2b3e7;
+            --card: #f5b1ec; 
+        }
+
+        .dark-mode {
+            --bg: #0f172a;
+            --text: #f8f9fa;
+            --sidebar: #1e293b;
+            --card: #0d0e0e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg); color: var(--text); transition: 0.3s; }
+
+        /* Auth Screen */
+        .auth-screen { display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .auth-card { background: var(--card); padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 400px; }
+        
+        input, select, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #030303; border-radius: 8px; background: transparent; color: inherit; }
+        input::placeholder { color: white !important; opacity: 1 !important; }
+        .btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* Dashboard Layout */
+        #main-app { display: none; }
+
+        .sidebar {
+            width: 260px;
+            height: 100vh;
+            background: var(--sidebar);
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 25px;
+            border-right: 1px solid #131314;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        /* ✅ FIX: Content wrapper gets the left margin */
+        .main-content {
+            margin-left: 260px;
+            padding: 40px;
+            min-height: 100vh;
+        }
+
+        .nav-link { padding: 12px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px; margin-bottom: 5px; color: #0b0c0c; }
+        .nav-link:hover, .nav-link.active { background: var(--primary); color: white; }
+
+        /* Grid */
+        .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
+
+        .folder-card, .match-card { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #0b0c0c; position: relative; transition: 0.3s; }
+        .folder-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        
+        .section { display: none; }
+        .active-section { display: block; }
+        
+        #taskList li { background: var(--card); padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; border: 1px solid #060707; }
+        .badge { background: #d8d8e8; color: #0c0c0c; padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px; }
+
+        .s-tab { padding: 12px; cursor: pointer; border-radius: 8px; font-size: 14px; color: #080808; margin-bottom: 5px; transition: 0.2s; }
+        .s-tab:hover { background: rgba(139, 92, 246, 0.1); }
+        .s-tab.active { background: var(--primary); color: white; }
+        .set-content label { color: var(--text); }
+        /* Video Title (Java, Python etc.) color */
+/* Line 80: Video Title (Java, Python etc.) color */
+.folder-card h4 {
+    color: var(--text); /* 'var(--text)' kudutha auto-ah light/dark mode-ku maaridum */
+    font-size: 18px;
+    margin-bottom: 5px;
+    font-weight: 700;
+}
+
+/* Line 86: Uploaded Date color */
+.folder-card p {
+    color: #64748b; /* Decent grey color */
+    font-size: 13px;
+}
+
+/* Line 91: Dark mode special adjustments */
+.dark-mode .folder-card p {
+    color: #cbd5e1; /* Dark mode-la date konjam light-ah theriya */
+}
+    </style>
+</head>
+<body>
+
+<div id="login-page" class="auth-screen">
+    <div class="auth-card">
+        <h2 id="auth-title" style="text-align: center;">IntelliPeer Hub</h2>
+        <p id="auth-subtitle" style="text-align: center; font-size: 14px; color: white; margin-bottom: 20px;">Create your account</p>
+        
+        <input type="email" id="regEmail" placeholder="Email Address">
+        <input type="password" id="regPass" placeholder="Password" required>
+
+        <div id="extra-fields">
+            <input type="text" id="regName" placeholder="Your Name">
+            <input type="text" id="regLearn" placeholder="To Learn (e.g. Java)">
+            <input type="text" id="regTeach" placeholder="To Teach (e.g. Python)">
+        </div>
+
+        <div id="forgot-pw-link" style="text-align: right; font-size: 12px; margin-bottom: 10px; cursor: pointer; color: #080808; display: none;" onclick="handleForgotPassword()">
+            Forgot Password?
+        </div>
+
+        <button class="btn" id="auth-btn" onclick="handleAuth()">Start Swapping</button>
+        <div class="toggle-link" id="toggle-link" onclick="toggleAuthMode()" style="text-align: center; margin-top: 15px; cursor: pointer; color: #4f46e5; font-size: 14px; text-decoration: underline;">
+            Already have an account? Login
+        </div>
+    </div>
+</div>
+
+<div id="main-app">
+    <!-- ✅ Sidebar is fixed, stays on the left -->
+    <div class="sidebar">
+        <h2 style="color: var(--primary); margin-bottom: 30px;">IntelliPeer</h2>
+        <div class="nav-link active" onclick="showPage('home-sec', this)"><i class="fas fa-home"></i> Dashboard</div>
+        <div class="nav-link" onclick="showPage('match-sec', this); findMatches()"><i class="fas fa-handshake"></i> Match Maker</div>
+        <div class="nav-link" onclick="showPage('upload-sec', this); loadFolders()"><i class="fas fa-plus-circle"></i> Upload Content</div>
+        <div class="nav-link" onclick="showPage('meet-sec', this)"><i class="fas fa-video"></i> Google Meet</div>
+        <div class="nav-link" onclick="showPage('task-sec', this)"><i class="fas fa-check-double"></i> Tasks</div>
+        <div class="nav-link" onclick="showPage('settings-sec', this); loadCurrentUserData()"><i class="fas fa-cog"></i> Settings</div>
+        <div class="nav-link" onclick="logout()" style="margin-top: 20px; color: #db3a55; cursor: pointer;"><i class="fas fa-sign-out-alt"></i> Logout</div>
+        <div class="nav-link" onclick="showPage('match-sec', this); findMatches()" style="position: relative;">   
+            <i class="fas fa-bell"></i> Notifications
+            <span id="nav-notif-dot" style="display:none; position:absolute; top:10px; left:25px; width:8px; height:8px; background:#f43f5e; border-radius:50%; border:2px solid var(--sidebar);"></span>
+        </div>
+        <div class="nav-link" onclick="showPage('my-library-sec', this); loadMyLibrary()">
+            <i class="fas fa-folder-open"></i> My Library
+        </div>
+    </div>
+
+    <!-- ✅ All sections live inside .main-content which is offset from sidebar -->
+    <div class="main-content">
+
+        <section id="home-sec" class="section active-section">
+            <!-- Course List View -->
+            <div id="course-list-view">
+                <h1 id="user-welcome">Welcome!</h1>
+                <p style="color: var(--text); margin-bottom: 10px;">Explore skill folders created by you and others.</p>
+                
+                <div style="margin: 20px 0; position: relative; max-width: 500px;">
+                    <i class="fas fa-search" style="position: absolute; left: 15px; top: 12px; color: #666;"></i>
+                    <input type="text" id="dashboardSearch" placeholder="Search by Topic (e.g. Java, Python)..." 
+                           onkeyup="filterFolders()" 
+                           style="padding: 12px 12px 12px 45px; border: 2px solid var(--primary); border-radius: 10px; background: white; color: black; width: 100%; margin: 0;">
+                </div>
+
+                <div id="folder-container" class="folder-grid"></div>
+            </div>
+
+            <!-- Course Detail View (hidden by default) -->
+            <div id="course-detail-view" style="display:none;">
+                <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
+                    <button onclick="closeCourseDetail()" style="background:var(--primary); border:none; color:white; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold;">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                    <div>
+                        <h1 id="course-detail-title" style="margin:0;"></h1>
+                        <p id="course-detail-meta" style="font-size:13px; color:#555; margin:4px 0 0 0;"></p>
+                    </div>
+                </div>
+
+                <div id="course-files-container" class="folder-grid"></div>
+            </div>
+        </section>
+
+        <section id="my-library-sec" class="section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>My Uploaded Content</h1>
+                <div style="font-size: 14px; background: var(--primary); color: white; padding: 5px 15px; border-radius: 20px;" id="my-content-count">
+                    0 Items
+                </div>
+            </div>
+            <p style="color: #070708; margin-top: 5px;">Manage all your videos, documents, and images in one place.</p>
+            <div id="my-library-container" class="folder-grid" style="margin-top: 20px;"></div>
+        </section>
+
+        <section id="match-sec" class="section">
+            <h1>Skill Match Maker</h1>
+            <p>Finding peers who want to learn what you teach!</p>
+            <div id="match-container" class="folder-grid" style="margin-top: 20px;"></div>
+        </section>
+
+        <section id="upload-sec" class="section">
+            <h1>Upload Study Material</h1>
+            <p style="color:rgba(0,0,0,0.6); margin-top:5px;">Choose to add content to an existing folder or create a brand new one.</p>
+
+            <!-- Step 1: Mode Toggle -->
+            <div style="margin-top:25px; max-width:560px;">
+
+                <!-- Toggle Buttons -->
+                <div style="display:flex; gap:12px; margin-bottom:22px;">
+                    <button id="btn-choose-existing" onclick="setUploadMode('existing')"
+                        style="flex:1; padding:16px; border-radius:12px; border:2px solid var(--primary); background:var(--primary); color:white; cursor:pointer; font-weight:bold; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px; transition:0.2s;">
+                        <i class="fas fa-folder-open" style="font-size:18px;"></i>
+                        <div style="text-align:left;">
+                            <div style="font-size:14px;">Choose Existing</div>
+                            <div style="font-size:11px; font-weight:normal; opacity:0.85;">Add to a current folder</div>
+                        </div>
+                    </button>
+                    <button id="btn-create-new" onclick="setUploadMode('new')"
+                        style="flex:1; padding:16px; border-radius:12px; border:2px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.4); color:#333; cursor:pointer; font-weight:bold; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px; transition:0.2s;">
+                        <i class="fas fa-plus-circle" style="font-size:18px;"></i>
+                        <div style="text-align:left;">
+                            <div style="font-size:14px;">Create New Folder</div>
+                            <div style="font-size:11px; font-weight:normal; opacity:0.7;">Start a fresh course</div>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- PANEL A: Choose Existing Folder -->
+                <div id="panel-existing" style="background:var(--card); border-radius:12px; padding:20px; margin-bottom:15px;">
+                    <p style="font-size:12px; font-weight:bold; color:rgba(0,0,0,0.5); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px;">
+                        <i class="fas fa-folder" style="margin-right:5px;"></i> Available Course Folders
+                    </p>
+                    <div id="existing-folder-chips" style="display:flex; flex-wrap:wrap; gap:8px; min-height:36px;">
+                        <span style="font-size:13px; color:rgba(0,0,0,0.4); font-style:italic;">Loading folders...</span>
+                    </div>
+                    <!-- Selected indicator -->
+                    <div id="selected-folder-display" style="display:none; margin-top:14px; padding:10px 14px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; align-items:center; gap:10px;">
+                        <i class="fas fa-check-circle" style="color:#16a34a; font-size:16px;"></i>
+                        <span style="font-size:13px; color:#166534; font-weight:bold; flex:1;">Selected: <span id="selected-folder-name"></span></span>
+                        <button onclick="clearFolderSelection()" style="background:none; border:none; color:#dc2626; cursor:pointer; font-size:15px;" title="Clear">✕</button>
+                    </div>
+                </div>
+
+                <!-- PANEL B: Create New Folder (hidden initially) -->
+                <div id="panel-new" style="background:var(--card); border-radius:12px; padding:20px; margin-bottom:15px; display:none;">
+                    <p style="font-size:12px; font-weight:bold; color:rgba(0,0,0,0.5); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px;">
+                        <i class="fas fa-plus-circle" style="margin-right:5px;"></i> New Folder Name
+                    </p>
+                    <input type="text" id="newFolderName" placeholder="e.g. Machine Learning, Web Design..."
+                           style="margin:0; background:white; color:#111;"
+                           oninput="checkNewFolderName(this.value)">
+                    <div id="new-folder-hint" style="font-size:12px; margin-top:8px; padding:8px 12px; border-radius:6px; display:none;"></div>
+                </div>
+
+                <!-- Hidden unified input (used by createFolder()) -->
+                <input type="hidden" id="folderName">
+
+                <!-- Step 2: File Upload -->
+                <div style="background:var(--card); border-radius:12px; padding:20px; margin-bottom:20px;">
+                    <p style="font-size:12px; font-weight:bold; color:rgba(0,0,0,0.5); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px;">
+                        <i class="fas fa-cloud-upload-alt" style="margin-right:5px;"></i> File Details
+                    </p>
+                    <label style="font-weight:bold; font-size:13px; display:block; margin-bottom:6px;">Content Type</label>
+                    <select id="contentType" style="background:white; color:#111; margin-bottom:0;">
+                        <option value="Video">📹 Video Tutorial</option>
+                        <option value="PDF">📄 PDF Material</option>
+                        <option value="Image">🖼️ Image</option>
+                    </select>
+                    <label style="font-weight:bold; font-size:13px; display:block; margin-top:14px; margin-bottom:6px;">Choose File</label>
+                    <input type="file" id="fileInput" style="background:white; color:#111; margin:0;">
+                </div>
+
+                <button class="btn" onclick="createFolder()" style="font-size:15px; padding:14px;">
+                    <i class="fas fa-cloud-upload-alt"></i> &nbsp;Upload & Publish
+                </button>
+            </div>
+        </section>
+
+
+        <section id="meet-sec" class="section">
+            <h1>Google Meet</h1>
+            <div style="background: var(--card); padding: 30px; border-radius: 15px; text-align: center; margin-top: 20px;">
+                <i class="fab fa-google" style="font-size: 40px; color: #4285F4;"></i>
+                <h3>Start a Live Skill Swap</h3>
+                <button class="btn" style="width: auto; padding: 12px 30px;" onclick="window.open('https://meet.google.com/new')">Create New Meeting</button>
+            </div>
+        </section>
+
+        <section id="task-sec" class="section">
+            <h1>Daily Learning Tasks</h1>
+            <div style="margin-top: 20px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="taskInput" placeholder="Add a new goal..." style="flex: 1;">
+                    <button class="btn" style="width: 120px;" onclick="addTask()">Add Task</button>
+                </div>
+                <ul id="taskList" style="margin-top: 20px; list-style: none;"></ul>
+            </div>
+        </section>
+
+        <section id="settings-sec" class="section">
+            <h1>Settings</h1>
+            
+            <div style="display: flex; background: var(--card); border-radius: 15px; margin-top: 20px; overflow: hidden; border: 1px solid rgba(0,0,0,0.1); min-height: 450px;">
+                <div style="width: 200px; background: rgba(0,0,0,0.03); border-right: 1px solid rgba(0,0,0,0.05); padding: 15px;">
+                    <div id="tab-btn-prof" class="nav-link active" onclick="switchSetTab('profile')" style="font-size: 14px; margin-bottom: 5px;">
+                        <i class="fas fa-user-edit"></i> Profile
+                    </div>
+                    <div id="tab-btn-priv" class="nav-link" onclick="switchSetTab('privacy')" style="font-size: 14px;">
+                        <i class="fas fa-shield-alt"></i> Privacy & Security
+                    </div>
+                </div>
+
+                <div style="flex: 1; padding: 30px;">
+                    <div id="set-content-profile">
+                        <h3 style="margin-bottom: 20px; color: var(--primary);">Edit Profile</h3>
+                        
+                        <label style="font-size: 12px; font-weight: bold; display: block;">Full Name</label>
+                        <input type="text" id="editName" placeholder="Update your name">
+                        
+                        <label style="font-size: 12px; font-weight: bold; display: block; margin-top: 15px;">I want to Learn</label>
+                        <input type="text" id="editLearn" placeholder="e.g. JavaScript, AI">
+                        
+                        <label style="font-size: 12px; font-weight: bold; display: block; margin-top: 15px;">I can Teach</label>
+                        <input type="text" id="editTeach" placeholder="e.g. Python, Yoga">
+                        
+                        <button class="btn" onclick="updateProfileData()" style="margin-top: 20px; width: auto; padding: 12px 30px;">Save Profile</button>
+                    </div>
+
+                    <div id="set-content-privacy" style="display: none;">
+                        <h3 style="margin-bottom: 20px; color: var(--primary);">Privacy & Security</h3>
+                        
+                        <div style="margin-bottom: 25px;">
+                            <p style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">Security</p>
+                            <button class="btn" style="background: #070708; width: auto;" onclick="changePasswordUI()">Change Password?</button>
+                        </div>
+
+                        <hr style="opacity: 0.1; margin: 20px 0;">
+
+                        <div style="margin-bottom: 25px;">
+                            <p style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">Theme Preference</p>
+                            <button class="btn" onclick="toggleMode()" style="background: var(--text); color: var(--bg); width: auto;">Toggle Dark/Light Mode</button>
+                        </div>
+
+                        <div style="margin-bottom: 25px;">
+                            <p style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">Account Privacy</p>
+                            <label style="display: flex; align-items: center; gap: 10px; font-size: 14px;">
+                                <input type="checkbox" checked style="width: auto; margin: 0;"> Make profile discoverable
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- end .main-content -->
+</div><!-- end #main-app -->
+
+<div id="chat-box" style="display:none; position:fixed; bottom:20px; right:20px; width:320px; height:450px; background:#f8f6f6; border-radius:15px; flex-direction:column; box-shadow:0 10px 30px rgba(0,0,0,0.2); border: 1px solid #110f0f; z-index: 9999; font-family: sans-serif; overflow:hidden;">
+    <div style="padding:15px; background:#6366f1; color:white; display:flex; justify-content:space-between; align-items:center;">
+        <span id="chat-name-header" style="font-weight: bold;">Chat</span>
+        <button onclick="document.getElementById('chat-box').style.display='none'" style="background:none; border:none; color:white; cursor:pointer; font-size:20px;">&times;</button>
+    </div>
+    <div id="msgs-container" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:8px; background: #f9f9f9;"></div>
+    <div style="display:flex; padding:10px; border-top:1px solid #120f0f; gap:5px; background:white;">
+        <input id="chat-input" style="flex:1; padding:8px; border:1px solid #141313; border-radius:5px; margin:0;" placeholder="Type a message...">
+        <button onclick="sendAppMessage()" style="padding:8px 15px; background:#6366f1; color:white; border:none; border-radius:5px; cursor:pointer;">Send</button>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "http://localhost:5000/api";
+    const FILE_BASE = "http://localhost:5000"; 
+    
+    let currentUser = localStorage.getItem("userName") || ""; 
+    let isRegisterMode = true;
+
+    window.onload = () => {
+        if (currentUser && currentUser !== "undefined") {
+            showDashboard();
+            if(document.getElementById('editName')) {
+                document.getElementById('editName').value = currentUser;
+            }
+        } else {
+            showLoginPage();
+        }
+    };
+
+    function switchSetTab(tab) {
+        const isProf = tab === 'profile';
+        document.getElementById('set-content-profile').style.display = isProf ? 'block' : 'none';
+        document.getElementById('set-content-privacy').style.display = isProf ? 'none' : 'block';
+        document.getElementById('tab-btn-prof').classList.toggle('active', isProf);
+        document.getElementById('tab-btn-priv').classList.toggle('active', !isProf);
+    }
+
+    async function updateProfileData() {
+        const newName = document.getElementById('editName').value;
+        const newLearn = document.getElementById('editLearn').value;
+        const newTeach = document.getElementById('editTeach').value;
+        if (!newName) return alert("Name is required!");
+        try {
+            const res = await fetch(`${API_BASE}/users/update`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ oldName: currentUser, newName, toLearn: newLearn, toTeach: newTeach })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                currentUser = newName;
+                localStorage.setItem("userName", newName);
+                alert("Profile updated successfully! ✨");
+                location.reload();
+            } else { alert(data.error || "Update failed"); }
+        } catch (err) { alert("Server error. Make sure your backend is running!"); }
+    }
+
+    async function loadCurrentUserData() {
+        try {
+            const res = await fetch(`${API_BASE}/users`);
+            const users = await res.json();
+            const me = users.find(u => u.name === currentUser);
+            if (me) {
+                document.getElementById('editName').value = me.name || "";
+                document.getElementById('editLearn').value = me.toLearn || "";
+                document.getElementById('editTeach').value = me.toTeach || "";
+            }
+        } catch (err) { console.error("Error loading user data:", err); }
+    }
+
+    async function loadMyLibrary() {
+        try {
+            const res = await fetch(`${API_BASE}/folders`);
+            const folders = await res.json();
+            const container = document.getElementById('my-library-container');
+            const countBadge = document.getElementById('my-content-count');
+            container.innerHTML = "";
+            const myContent = folders.filter(f => f.uploadedBy === currentUser);
+            countBadge.innerText = `${myContent.length} Items`;
+            if (myContent.length === 0) {
+                container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 50px; background: var(--card); border-radius: 15px; border: 2px dashed #e2e8f0;"><i class="fas fa-cloud-upload-alt" style="font-size: 40px; color: #cbd5e1; margin-bottom: 15px;"></i><p style="color: #64748b;">Your library is empty. Start uploading!</p></div>`;
+                return;
+            }
+            myContent.forEach(f => {
+                const card = document.createElement('div');
+                card.className = 'folder-card';
+                const cleanPath = f.filePath.replace(/\\/g, '/');
+                const fileUrl = `${FILE_BASE}/${cleanPath}`;
+                let icon = "fa-file", color = "#6366f1";
+                if (f.type === "Video") { icon = "fa-video"; color = "#f59e0b"; }
+                else if (f.type === "PDF") { icon = "fa-file-pdf"; color = "#ef4444"; }
+                else if (f.type === "Image") { icon = "fa-image"; color = "#10b981"; }
+                card.innerHTML = `
+                    <i class="fas fa-trash" style="position:absolute; top:15px; right:15px; color:#f43f5e; cursor:pointer;" onclick="deleteFolder('${f._id}'); loadMyLibrary();"></i>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+                        <i class="fas ${icon}" style="color: ${color}; font-size: 24px;"></i>
+                        <span style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;">${f.type}</span>
+                    </div>
+                    <h4 style="margin-bottom:5px;">${f.topic}</h4>
+    <div style="display:flex; padding:10px; border-top:1px solid #120f0f; gap:5px; background:white;">
+                    <p style="font-size:12px; color:#120f0f;">Uploaded on: ${new Date().toLocaleDateString()}</p>
+                    <button class="btn" style="margin-top:15px; padding: 8px; font-size: 13px;" onclick="window.open('${fileUrl}', '_blank')">
+                        <i class="fas fa-external-link-alt"></i> View Content
+                    </button>`;
+                container.appendChild(card);
+            });
+        } catch (err) { console.error("Error loading library:", err); }
+    }
+
+    function forgotPasswordUI() {
+        const email = prompt("Enter your registered email address:");
+        if (email) alert("If " + email + " is in our database, you will receive a reset link shortly.");
+    }
+
+    function showDashboard() {
+        document.getElementById('login-page').style.display = 'none';
+        document.getElementById('main-app').style.display = 'block';
+        document.getElementById('user-welcome').innerText = `Welcome Back, ${currentUser}!`;
+        loadFolders(); 
+    }
+
+    function showLoginPage() {
+        document.getElementById('login-page').style.display = 'flex';
+        document.getElementById('main-app').style.display = 'none';
+    }
+
+    function toggleAuthMode() {
+        isRegisterMode = !isRegisterMode;
+        document.getElementById('extra-fields').style.display = isRegisterMode ? "block" : "none";
+        document.getElementById('forgot-pw-link').style.display = isRegisterMode ? "none" : "block";
+        document.getElementById('auth-title').innerText = isRegisterMode ? "IntelliPeer Hub" : "Welcome Back";
+        document.getElementById('auth-btn').innerText = isRegisterMode ? "Start Swapping" : "Login";
+        document.getElementById('toggle-link').innerText = isRegisterMode ? "Already have an account? Login" : "New here? Create Account";
+    }
+
+    async function handleAuth() {
+        const email = document.getElementById('regEmail').value;
+        const password = document.getElementById('regPass').value;
+        const name = document.getElementById('regName').value;
+        const toLearn = document.getElementById('regLearn').value;
+        const toTeach = document.getElementById('regTeach').value;
+        if (!email || !password) return alert("Please fill Email and Password!");
+        const endpoint = isRegisterMode ? `${API_BASE}/signup` : `${API_BASE}/login`;
+        const bodyData = isRegisterMode ? { name, email, password, toLearn, toTeach } : { email, password };
+        try {
+            const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bodyData) });
+            const data = await res.json();
+            if (res.ok) {
+                currentUser = data.name;
+                localStorage.setItem("userName", currentUser);
+                showDashboard();
+            } else { alert(data.error || "Login Failed!"); }
+        } catch (err) { alert("Server connection error!"); }
+    }
+
+    async function handleForgotPassword() {
+        const email = document.getElementById('regEmail').value;
+        if (!email) return alert("Please enter your email address first!");
+        const newPassword = prompt("Enter your NEW password:");
+        if (!newPassword || newPassword.length < 4) return alert("Password must be at least 4 characters.");
+        try {
+            const res = await fetch(`${API_BASE}/reset-password`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, newPassword }) });
+            const data = await res.json();
+            if (res.ok) alert("Password updated successfully! You can now login.");
+            else alert(data.error || "User not found.");
+        } catch (err) { alert("Server error. Make sure your backend supports password resets."); }
+    }
+
+    // Store grouped folders globally so openCourseDetail can access them
+    let allGroupedFolders = {};
+
+    async function loadFolders() {
+        try {
+            const res = await fetch(`${API_BASE}/folders`);
+            const folders = await res.json();
+            const container = document.getElementById('folder-container');
+            container.innerHTML = "";
+
+            // Group by topic (case-insensitive)
+            allGroupedFolders = {};
+            folders.forEach(f => {
+                const key = f.topic.trim().toLowerCase();
+                if (!allGroupedFolders[key]) allGroupedFolders[key] = { displayName: f.topic.trim(), items: [] };
+                allGroupedFolders[key].items.push(f);
+            });
+
+            if (Object.keys(allGroupedFolders).length === 0) {
+                container.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px; background:var(--card); border-radius:15px; border:2px dashed rgba(0,0,0,0.15);">
+                    <i class="fas fa-folder-open" style="font-size:40px; color:rgba(0,0,0,0.2); margin-bottom:15px;"></i>
+                    <p style="color:rgba(0,0,0,0.4);">No courses uploaded yet. Be the first!</p>
+                </div>`;
+                renderFolderChips();
+                return;
+            }
+            renderFolderChips();
+
+            Object.keys(allGroupedFolders).forEach(key => {
+                const { displayName, items } = allGroupedFolders[key];
+                const uploaders = [...new Set(items.map(i => i.uploadedBy))];
+                const typeIcons = { Video: 'fa-video', PDF: 'fa-file-pdf', Image: 'fa-image' };
+                const typeCounts = {};
+                items.forEach(i => { typeCounts[i.type] = (typeCounts[i.type] || 0) + 1; });
+
+                const card = document.createElement('div');
+                card.className = 'folder-card';
+                card.setAttribute('data-topic', key);
+                card.style.cursor = 'pointer';
+                card.onclick = () => openCourseDetail(key);
+
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <i class="fas fa-folder" style="color:#6366f1; font-size:38px;"></i>
+                        <span class="badge" style="height:22px; font-size:12px;">${items.length} File${items.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <h3 style="margin:12px 0 6px 0; font-size:17px;">${displayName}</h3>
+                    <p style="font-size:12px; color:rgba(0,0,0,0.55); margin-bottom:10px;">
+                        <i class="fas fa-users" style="margin-right:4px;"></i>
+                        ${uploaders.length} contributor${uploaders.length > 1 ? 's' : ''}: <b>${uploaders.join(', ')}</b>
+                    </p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; border-top:1px solid rgba(0,0,0,0.1); padding-top:10px;">
+                        ${Object.entries(typeCounts).map(([type, count]) => `
+                            <span style="display:flex; align-items:center; gap:4px; font-size:12px; background:rgba(255,255,255,0.4); padding:4px 10px; border-radius:20px;">
+                                <i class="fas ${typeIcons[type] || 'fa-file'}"></i> ${count} ${type}
+                            </span>`).join('')}
+                    </div>
+                    <div style="margin-top:12px; text-align:right; color:var(--primary); font-size:13px; font-weight:bold;">
+                        Open Course <i class="fas fa-chevron-right"></i>
+                    </div>`;
+                container.appendChild(card);
+            });
+        } catch (err) { console.error(err); }
+    }
+
+    function openCourseDetail(topicKey) {
+        const { displayName, items } = allGroupedFolders[topicKey];
+        const uploaders = [...new Set(items.map(i => i.uploadedBy))];
+
+        document.getElementById('course-list-view').style.display = 'none';
+        document.getElementById('course-detail-view').style.display = 'block';
+        document.getElementById('course-detail-title').innerText = displayName;
+        document.getElementById('course-detail-meta').innerHTML = 
+            `<i class="fas fa-users"></i> ${items.length} file${items.length > 1 ? 's' : ''} &nbsp;|&nbsp; 
+             <i class="fas fa-user"></i> Contributors: <b>${uploaders.join(', ')}</b>`;
+
+        const container = document.getElementById('course-files-container');
+        container.innerHTML = '';
+
+        const typeIcons = { Video: 'fa-video', PDF: 'fa-file-pdf', Image: 'fa-image' };
+        const typeColors = { Video: '#f59e0b', PDF: '#ef4444', Image: '#10b981' };
+
+        items.forEach(item => {
+            const fileUrl = `${FILE_BASE}/${item.filePath.replace(/\\/g, '/')}`;
+            const icon = typeIcons[item.type] || 'fa-file';
+            const color = typeColors[item.type] || '#6366f1';
+
+            const card = document.createElement('div');
+            card.className = 'folder-card';
+            card.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px;">
+                    <div style="width:48px; height:48px; border-radius:10px; background:${color}22; display:flex; align-items:center; justify-content:center;">
+                        <i class="fas ${icon}" style="color:${color}; font-size:22px;"></i>
+                    </div>
+                    <div>
+                        <span style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#64748b; display:block;">${item.type}</span>
+                        <span style="font-size:14px; font-weight:600;">${displayName}</span>
+                    </div>
+                </div>
+                <p style="font-size:12px; color:#64748b; margin-bottom:4px;">
+                    <i class="fas fa-user" style="margin-right:4px;"></i> Uploaded by: <b>${item.uploadedBy}</b>
+                </p>
+                <div style="display:flex; gap:8px; margin-top:15px;">
+                    <button class="btn" style="padding:8px; font-size:13px;" onclick="window.open('${fileUrl}', '_blank')">
+                        <i class="fas fa-external-link-alt"></i> Open
+                    </button>
+                    ${item.uploadedBy === currentUser ? `
+                    <button class="btn" style="padding:8px; font-size:13px; background:#f43f5e; flex:0.4;" 
+                            onclick="deleteFolder('${item._id}'); openCourseDetail('${topicKey}');">
+                        <i class="fas fa-trash"></i>
+                    </button>` : ''}
+                </div>`;
+            container.appendChild(card);
+        });
+    }
+
+    function closeCourseDetail() {
+        document.getElementById('course-detail-view').style.display = 'none';
+        document.getElementById('course-list-view').style.display = 'block';
+        loadFolders(); // Refresh in case something was deleted
+    }
+
+    let uploadMode = 'existing'; // 'existing' or 'new'
+
+    function setUploadMode(mode) {
+        uploadMode = mode;
+        const isExisting = mode === 'existing';
+
+        // Toggle panels
+        document.getElementById('panel-existing').style.display = isExisting ? 'block' : 'none';
+        document.getElementById('panel-new').style.display = isExisting ? 'none' : 'block';
+
+        // Style toggle buttons
+        const btnExisting = document.getElementById('btn-choose-existing');
+        const btnNew = document.getElementById('btn-create-new');
+
+        if (isExisting) {
+            btnExisting.style.background = 'var(--primary)';
+            btnExisting.style.color = 'white';
+            btnExisting.style.borderColor = 'var(--primary)';
+            btnNew.style.background = 'rgba(255,255,255,0.4)';
+            btnNew.style.color = '#333';
+            btnNew.style.borderColor = 'rgba(0,0,0,0.2)';
+        } else {
+            btnNew.style.background = 'var(--primary)';
+            btnNew.style.color = 'white';
+            btnNew.style.borderColor = 'var(--primary)';
+            btnExisting.style.background = 'rgba(255,255,255,0.4)';
+            btnExisting.style.color = '#333';
+            btnExisting.style.borderColor = 'rgba(0,0,0,0.2)';
+        }
+
+        // Clear selections
+        document.getElementById('folderName').value = '';
+        clearFolderSelection();
+        if (!isExisting) {
+            document.getElementById('newFolderName').value = '';
+            document.getElementById('new-folder-hint').style.display = 'none';
+        }
+    }
+
+    function checkNewFolderName(value) {
+        const hint = document.getElementById('new-folder-hint');
+        const trimmed = value.trim().toLowerCase();
+        if (!trimmed) { hint.style.display = 'none'; return; }
+
+        const existingTopics = Object.values(allGroupedFolders).map(g => g.displayName.toLowerCase());
+        const alreadyExists = existingTopics.includes(trimmed);
+
+        hint.style.display = 'block';
+        if (alreadyExists) {
+            hint.style.background = '#fef9c3';
+            hint.style.color = '#713f12';
+            hint.style.border = '1px solid #fde047';
+            hint.innerHTML = `<i class="fas fa-exclamation-triangle"></i> A folder named <b>"${value.trim()}"</b> already exists! Switch to "Choose Existing" to add to it.`;
+        } else {
+            hint.style.background = '#ede9fe';
+            hint.style.color = '#4c1d95';
+            hint.style.border = '1px solid #c4b5fd';
+            hint.innerHTML = `<i class="fas fa-plus-circle"></i> New folder <b>"${value.trim()}"</b> will be created.`;
+        }
+    }
+
+    function renderFolderChips() {
+        const container = document.getElementById('existing-folder-chips');
+        if (!container) return;
+        const topics = Object.values(allGroupedFolders);
+        if (topics.length === 0) {
+            container.innerHTML = `<span style="font-size:13px; color:rgba(0,0,0,0.4); font-style:italic;">No existing folders yet — you'll create the first one!</span>`;
+            return;
+        }
+        container.innerHTML = topics.map(({ displayName, items }) => {
+            const count = items.length;
+            const uploaders = [...new Set(items.map(i => i.uploadedBy))].length;
+            return `<button onclick="selectFolderChip('${displayName.replace(/'/g, "\\'")}')"
+                        style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:20px; border:2px solid rgba(0,0,0,0.15); background:rgba(255,255,255,0.5); cursor:pointer; font-size:13px; font-weight:500; transition:0.2s; color:#111;"
+                        onmouseover="this.style.background='var(--primary)'; this.style.color='white'; this.style.borderColor='var(--primary)'"
+                        onmouseout="this.style.background='rgba(255,255,255,0.5)'; this.style.color='#111'; this.style.borderColor='rgba(0,0,0,0.15)'">
+                        <i class="fas fa-folder" style="color:#6366f1;"></i>
+                        ${displayName}
+                        <span style="background:rgba(0,0,0,0.1); padding:1px 7px; border-radius:10px; font-size:11px;">${count}</span>
+                    </button>`;
+        }).join('');
+    }
+
+    function selectFolderChip(name) {
+        document.getElementById('folderName').value = name;
+        // Show green selected display
+        const display = document.getElementById('selected-folder-display');
+        document.getElementById('selected-folder-name').innerText = `"${name}"`;
+        display.style.display = 'flex';
+        // Show hint
+        showFolderSuggestions(name);
+        // Highlight selected chip
+        document.querySelectorAll('#existing-folder-chips button').forEach(btn => {
+            btn.style.background = 'rgba(255,255,255,0.5)';
+            btn.style.color = '#111';
+            btn.style.borderColor = 'rgba(0,0,0,0.15)';
+        });
+    }
+
+    function clearFolderSelection() {
+        document.getElementById('folderName').value = '';
+        document.getElementById('selected-folder-display').style.display = 'none';
+        document.getElementById('folder-hint') && (document.getElementById('folder-hint').style.display = 'none');
+    }
+
+    function showFolderSuggestions(value) {
+        // No-op: old autocomplete replaced by chip UI
+    }
+
+    function selectFolder(name) {
+        // No-op: old function, kept to avoid reference errors
+    }
+
+
+
+    function filterFolders() {
+        const term = document.getElementById('dashboardSearch').value.toLowerCase();
+        document.querySelectorAll('.folder-card').forEach(card => {
+            const topic = card.getAttribute('data-topic');
+            card.style.display = topic && topic.includes(term) ? "block" : "none";
+        });
+    }
+
+    async function createFolder() {
+        let topicValue = '';
+
+        if (uploadMode === 'existing') {
+            topicValue = document.getElementById('folderName').value.trim();
+            if (!topicValue) return alert("Please select an existing folder first!");
+        } else {
+            topicValue = document.getElementById('newFolderName').value.trim();
+            if (!topicValue) return alert("Please enter a new folder name!");
+            // Warn if it already exists
+            const existingTopics = Object.values(allGroupedFolders).map(g => g.displayName.toLowerCase());
+            if (existingTopics.includes(topicValue.toLowerCase())) {
+                return alert(`"${topicValue}" already exists! Switch to "Choose Existing" to add to it.`);
+            }
+        }
+
+        const fileInput = document.getElementById('fileInput');
+        const typeValue = document.getElementById('contentType').value;
+        if (!fileInput.files[0]) return alert("Please choose a file to upload!");
+
+        const formData = new FormData();
+        formData.append("topic", topicValue);
+        formData.append("type", typeValue);
+        formData.append("file", fileInput.files[0]);
+        formData.append("uploadedBy", currentUser);
+
+        try {
+            const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
+            if (res.ok) {
+                alert("Published! ✅");
+                document.getElementById('folderName').value = "";
+                document.getElementById('fileInput').value = "";
+                document.getElementById('selected-folder-display').style.display = 'none';
+                document.getElementById('folder-hint') && (document.getElementById('folder-hint').style.display = 'none');
+                if (document.getElementById('newFolderName')) document.getElementById('newFolderName').value = "";
+                if (document.getElementById('new-folder-hint')) document.getElementById('new-folder-hint').style.display = 'none';
+                loadFolders();
+                showPage('home-sec', document.querySelector('.nav-link'));
+            }
+        } catch (err) { alert("Upload error!"); }
+    }
+
+    async function deleteFolder(id) {
+        if (!confirm("Delete this?")) return;
+        try {
+            const res = await fetch(`${API_BASE}/folders/${id}`, { method: "DELETE" });
+            if (res.ok) { alert("Deleted!"); loadFolders(); }
+        } catch (err) { alert("Delete failed!"); }
+    }
+
+    let chatWith = "";
+    let lastMessageCount = {};
+
+    async function findMatches() {
+        try {
+            const res = await fetch(`${API_BASE}/users`);
+            const users = await res.json();
+            const container = document.getElementById('match-container');
+            container.innerHTML = users.filter(u => u.name !== currentUser).map(u => {
+                const hasUnread = lastMessageCount[u.name] === "NEW";
+                return `
+                    <div class="match-card" style="${hasUnread ? 'border: 1px solid #6366f1;' : ''}">
+                        <h3>${u.name} ${hasUnread ? '🔵' : ''}</h3>
+                        <p style="font-size:13px; margin: 5px 0;">Wants: <span class="badge">${u.toLearn || 'Any'}</span></p>
+                        <p style="font-size:13px;">Teaches: <span class="badge">${u.toTeach || 'Any'}</span></p>
+                        <button class="btn" style="margin-top:15px; background:${hasUnread ? '#f43f5e' : '#6366f1'};" onclick="openAppChat('${u.name}')">
+                            <i class="fas fa-comment"></i> ${hasUnread ? 'New Message' : 'Message Now'}
+                        </button>
+                    </div>`;
+            }).join('');
+        } catch (err) { console.error("Match find error:", err); }
+    }
+
+    function openAppChat(name) {
+        chatWith = name;
+        lastMessageCount[name] = "READ";
+        document.getElementById('nav-notif-dot').style.display = 'none';
+        document.getElementById('chat-name-header').innerText = "Chat with " + name;
+        document.getElementById('chat-box').style.display = 'flex';
+        refreshMessages();
+        findMatches();
+    }
+
+    async function refreshMessages() {
+        if(!chatWith || document.getElementById('chat-box').style.display === 'none') return;
+        try {
+            const res = await fetch(`${API_BASE}/messages/${currentUser}/${chatWith}`);
+            const data = await res.json();
+            const display = document.getElementById('msgs-container');
+            display.innerHTML = data.map(m => `
+                <div style="align-self:${m.sender === currentUser?'flex-end':'flex-start'}; 
+                            background:${m.sender === currentUser?'#6366f1':'#eee'}; 
+                            color:${m.sender === currentUser?'white':'#000'}; 
+                            padding:8px 12px; border-radius:10px; max-width:80%; font-size:13px; margin-bottom:5px;">
+                    ${m.text}
+                </div>`).join('');
+            display.scrollTop = display.scrollHeight;
+        } catch (e) { console.error("Chat sync error"); }
+    }
+
+    async function checkNotifications() {
+        try {
+            const res = await fetch(`${API_BASE}/users`);
+            const users = await res.json();
+            let globalUnread = false;
+            for (let u of users.filter(u => u.name !== currentUser)) {
+                const msgRes = await fetch(`${API_BASE}/messages/${currentUser}/${u.name}`);
+                const msgs = await msgRes.json();
+                if (msgs.length > 0) {
+                    const lastMsg = msgs[msgs.length - 1];
+                    if (lastMsg.sender !== currentUser && chatWith !== u.name) {
+                        if (lastMessageCount[u.name] !== "READ") {
+                            lastMessageCount[u.name] = "NEW";
+                            globalUnread = true;
+                        }
+                    }
+                }
+            }
+            if (globalUnread) {
+                document.getElementById('nav-notif-dot').style.display = 'block';
+                if (document.getElementById('match-sec').classList.contains('active-section')) findMatches();
+            }
+        } catch (e) { console.error("Notif check failed"); }
+    }
+
+    async function sendAppMessage() {
+        const input = document.getElementById('chat-input');
+        if(!input.value) return;
+        try {
+            await fetch(`${API_BASE}/messages`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({sender: currentUser, receiver: chatWith, text: input.value}) });
+            input.value = ""; 
+            refreshMessages();
+        } catch (e) { alert("Message failed to send"); }
+    }
+
+    setInterval(refreshMessages, 3000);
+    setInterval(checkNotifications, 5000);
+
+    function logout() { localStorage.clear(); location.reload(); }
+
+    function showPage(pageId, element) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        document.getElementById(pageId).classList.add('active-section');
+        if(element) element.classList.add('active');
+    }
+
+    function addTask() {
+        const input = document.getElementById('taskInput');
+        if(!input.value) return;
+        const li = document.createElement('li');
+        li.innerHTML = `<input type="checkbox"> <span>${input.value}</span>`;
+        document.getElementById('taskList').appendChild(li);
+        input.value = "";
+    }
+
+    function toggleMode() { document.body.classList.toggle('dark-mode'); }
+</script>
+</body>
+</html>
