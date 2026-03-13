@@ -1,9 +1,18 @@
 const express = require('express');
+// Localhost link-ku bathula process.env.MONGO_URI use pannunga
 const mongoose = require('mongoose');
+
+const dbURI = process.env.MONGO_URI; 
+
+mongoose.connect(dbURI)
+  .then(() => console.log("MongoDB Cloud Connected!"))
+  .catch(err => console.log("DB Error:", err));
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+// Example:
+const API_BASE = "https://intellipeer-app.onrender.com/api";
 
 const app = express();
 app.use(cors());
