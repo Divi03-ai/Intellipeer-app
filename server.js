@@ -7,7 +7,6 @@ const fs = require('fs');
 
 const app = express();
 
-// ✅ CORS - Allow all origins (frontend can call from anywhere)
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -16,13 +15,14 @@ app.use(cors({
 
 app.use(express.json());
 
-// ✅ Serve uploaded files publicly
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ✅ FIX: One uploadDir for both serve + multer
+const uploadDir = process.env.RENDER ? '/tmp/uploads' : path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// ✅ Ensure upload directory exists
-if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
+// ✅ FIX: Serve from correct uploadDir (not hardcoded __dirname/uploads)
+app.use('/uploads', express.static(uploadDir));
 
-// ✅ MongoDB Connection - uses environment variable on Render
+// ✅ MongoDB
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/intellipeer';
 mongoose.connect(MONGO_URI)
     .then(() => console.log("DB Connected ✅"))
@@ -52,22 +52,15 @@ const Message = mongoose.model('Message', new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }));
 
-// ✅ Multer - Use /tmp on Render (ephemeral storage)
-const uploadDir = process.env.RENDER ? '/tmp/uploads' : './uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
+// ✅ Multer
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
-// ✅ Health check route (Render needs this)
 app.get('/', (req, res) => res.json({ status: 'IntelliPeer API running 🚀' }));
 
-// --- API ROUTES ---
-
-// 1. SIGNUP
 app.post('/api/signup', async (req, res) => {
     try {
         const user = new User(req.body);
@@ -78,13 +71,15 @@ app.post('/api/signup', async (req, res) => {
     }
 });
 
-// 2. LOGIN
 app.post('/api/login', async (req, res) => {
-    const user = await User.findOne({ email: req.body.email, password: req.body.password });
-    user ? res.json({ name: user.name }) : res.status(400).json({ error: "Invalid Login" });
+    try {
+        const user = await User.findOne({ email: req.body.email, password: req.body.password });
+        user ? res.json({ name: user.name }) : res.status(400).json({ error: "Invalid Login" });
+    } catch (err) {
+        res.status(500).json({ error: "Login error" });
+    }
 });
 
-// 3. RESET PASSWORD
 app.put('/api/reset-password', async (req, res) => {
     const { email, newPassword } = req.body;
     try {
@@ -98,7 +93,6 @@ app.put('/api/reset-password', async (req, res) => {
     }
 });
 
-// 4. UPDATE PROFILE
 app.put('/api/users/update', async (req, res) => {
     const { oldName, newName, toLearn, toTeach } = req.body;
     try {
@@ -117,53 +111,71 @@ app.put('/api/users/update', async (req, res) => {
     }
 });
 
-// 5. GET ALL USERS
 app.get('/api/users', async (req, res) => {
-    res.json(await User.find({}, 'name toLearn toTeach'));
+    try {
+        res.json(await User.find({}, 'name toLearn toTeach'));
+    } catch (err) {
+        res.status(500).json({ error: "Fetch error" });
+    }
 });
 
-// 6. UPLOAD FILE
 app.post('/api/upload', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const folder = new Folder({
-        topic: req.body.topic,
-        type: req.body.type,
-        uploadedBy: req.body.uploadedBy,
-        filePath: 'uploads/' + req.file.filename
-    });
-    await folder.save();
-    res.json({ message: "Success" });
+    try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        const folder = new Folder({
+            topic: req.body.topic,
+            type: req.body.type,
+            uploadedBy: req.body.uploadedBy,
+            filePath: 'uploads/' + req.file.filename
+        });
+        await folder.save();
+        res.json({ message: "Success" });
+    } catch (err) {
+        res.status(500).json({ error: "Upload error" });
+    }
 });
 
-// 7. GET ALL FOLDERS
 app.get('/api/folders', async (req, res) => {
-    res.json(await Folder.find().sort({ createdAt: -1 }));
+    try {
+        res.json(await Folder.find().sort({ createdAt: -1 }));
+    } catch (err) {
+        res.status(500).json({ error: "Fetch error" });
+    }
 });
 
-// 8. DELETE FOLDER
 app.delete('/api/folders/:id', async (req, res) => {
-    await Folder.findByIdAndDelete(req.params.id);
-    res.json({ message: "Deleted" });
+    try {
+        await Folder.findByIdAndDelete(req.params.id);
+        res.json({ message: "Deleted" });
+    } catch (err) {
+        res.status(500).json({ error: "Delete error" });
+    }
 });
 
-// 9. SEND MESSAGE
 app.post('/api/messages', async (req, res) => {
-    const msg = new Message(req.body);
-    await msg.save();
-    res.json(msg);
+    try {
+        const msg = new Message(req.body);
+        await msg.save();
+        res.json(msg);
+    } catch (err) {
+        res.status(500).json({ error: "Message error" });
+    }
 });
 
-// 10. GET MESSAGES
 app.get('/api/messages/:u1/:u2', async (req, res) => {
-    const msgs = await Message.find({
-        $or: [
-            { sender: req.params.u1, receiver: req.params.u2 },
-            { sender: req.params.u2, receiver: req.params.u1 }
-        ]
-    }).sort({ timestamp: 1 });
-    res.json(msgs);
+    try {
+        const msgs = await Message.find({
+            $or: [
+                { sender: req.params.u1, receiver: req.params.u2 },
+                { sender: req.params.u2, receiver: req.params.u1 }
+            ]
+        }).sort({ timestamp: 1 });
+        res.json(msgs);
+    } catch (err) {
+        res.status(500).json({ error: "Fetch error" });
+    }
 });
 
-// ✅ Use PORT from environment (Render sets this automatically)
+// ✅ 0.0.0.0 binding — Render-ல அவசியம்
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT} 🚀`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} 🚀`));
