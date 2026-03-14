@@ -1,31 +1,32 @@
 const express = require('express');
-// Localhost link-ku bathula process.env.MONGO_URI use pannunga
 const mongoose = require('mongoose');
-
-const dbURI = process.env.MONGO_URI; 
-
-mongoose.connect(dbURI)
-  .then(() => console.log("MongoDB Cloud Connected!"))
-  .catch(err => console.log("DB Error:", err));
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-// Example:
-const API_BASE = "https://intellipeer-app.onrender.com";
 
 const app = express();
-app.use(cors());
+
+// ✅ CORS - Allow all origins (frontend can call from anywhere)
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
-// Serve static files from public directory
-app.use(express.static('public'));
+// ✅ Serve uploaded files publicly
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Ensure upload directory exists
+// ✅ Ensure upload directory exists
 if (!fs.existsSync('./uploads')) fs.mkdirSync('./uploads');
 
-// MongoDB Connection
-
+// ✅ MongoDB Connection - uses environment variable on Render
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/intellipeer';
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("DB Connected ✅"))
+    .catch(err => console.error("DB Error:", err));
 
 // --- SCHEMAS ---
 const User = mongoose.model('User', new mongoose.Schema({
@@ -51,135 +52,118 @@ const Message = mongoose.model('Message', new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }));
 
-// Multer Setup
+// ✅ Multer - Use /tmp on Render (ephemeral storage)
+const uploadDir = process.env.RENDER ? '/tmp/uploads' : './uploads';
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
+    destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
+
+// ✅ Health check route (Render needs this)
+app.get('/', (req, res) => res.json({ status: 'IntelliPeer API running 🚀' }));
 
 // --- API ROUTES ---
 
-// 1. SIGNUP & LOGIN
+// 1. SIGNUP
 app.post('/api/signup', async (req, res) => {
     try {
         const user = new User(req.body);
         await user.save();
         res.status(201).json({ name: user.name });
-    } catch (err) { res.status(400).json({ error: "Email exists!" }); }
+    } catch (err) {
+        res.status(400).json({ error: "Email already exists!" });
+    }
 });
 
+// 2. LOGIN
 app.post('/api/login', async (req, res) => {
     const user = await User.findOne({ email: req.body.email, password: req.body.password });
     user ? res.json({ name: user.name }) : res.status(400).json({ error: "Invalid Login" });
 });
-// Add this to your server.js (Backend)
+
+// 3. RESET PASSWORD
 app.put('/api/reset-password', async (req, res) => {
     const { email, newPassword } = req.body;
     try {
-        // Find the user by email and update their password
-        const user = await User.findOneAndUpdate(
-            { email: email },
-            { password: newPassword }, // In a real app, you should hash this!
-            { new: true }
-        );
-
-        if (!user) return res.status(404).json({ error: "User not found" });
-        res.json({ message: "Password updated successfully" });
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: "No account found with this email." });
+        user.password = newPassword;
+        await user.save();
+        res.json({ message: "Password updated successfully!" });
     } catch (err) {
-        res.status(500).json({ error: "Database error" });
+        res.status(500).json({ error: "Server error during password reset." });
     }
 });
 
-// 2. USER PROFILE UPDATE (The part you needed for Settings)
+// 4. UPDATE PROFILE
 app.put('/api/users/update', async (req, res) => {
     const { oldName, newName, toLearn, toTeach } = req.body;
     try {
-        // Update user profile
         const user = await User.findOneAndUpdate(
             { name: oldName },
-            { name: newName, toLearn: toLearn, toTeach: toTeach },
+            { name: newName, toLearn, toTeach },
             { new: true }
         );
-
         if (!user) return res.status(404).json({ error: "User not found" });
-
-        // Synchronize name changes across other collections
         await Folder.updateMany({ uploadedBy: oldName }, { uploadedBy: newName });
         await Message.updateMany({ sender: oldName }, { sender: newName });
         await Message.updateMany({ receiver: oldName }, { receiver: newName });
-
         res.json({ message: "Profile Updated", name: user.name });
     } catch (err) {
         res.status(500).json({ error: "Server update error" });
     }
 });
 
+// 5. GET ALL USERS
 app.get('/api/users', async (req, res) => {
     res.json(await User.find({}, 'name toLearn toTeach'));
 });
 
-// 3. FOLDERS & UPLOADS
+// 6. UPLOAD FILE
 app.post('/api/upload', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const folder = new Folder({
         topic: req.body.topic,
         type: req.body.type,
         uploadedBy: req.body.uploadedBy,
-        filePath: req.file.path
+        filePath: 'uploads/' + req.file.filename
     });
     await folder.save();
     res.json({ message: "Success" });
 });
 
+// 7. GET ALL FOLDERS
 app.get('/api/folders', async (req, res) => {
     res.json(await Folder.find().sort({ createdAt: -1 }));
 });
 
+// 8. DELETE FOLDER
 app.delete('/api/folders/:id', async (req, res) => {
     await Folder.findByIdAndDelete(req.params.id);
     res.json({ message: "Deleted" });
 });
 
-// 4. MESSAGES
+// 9. SEND MESSAGE
 app.post('/api/messages', async (req, res) => {
     const msg = new Message(req.body);
     await msg.save();
     res.json(msg);
 });
 
+// 10. GET MESSAGES
 app.get('/api/messages/:u1/:u2', async (req, res) => {
     const msgs = await Message.find({
-        $or: [{ sender: req.params.u1, receiver: req.params.u2 }, 
-              { sender: req.params.u2, receiver: req.params.u1 }]
+        $or: [
+            { sender: req.params.u1, receiver: req.params.u2 },
+            { sender: req.params.u2, receiver: req.params.u1 }
+        ]
     }).sort({ timestamp: 1 });
     res.json(msgs);
 });
-// Route for Password Reset
-app.put('/api/reset-password', async (req, res) => {
-    const { email, newPassword } = req.body;
 
-    try {
-        // 1. Check if user exists
-        const user = await User.findOne({ email });
-        
-        if (!user) {
-            return res.status(404).json({ error: "No account found with this email." });
-        }
-
-        // 2. Update the password
-        // Note: If you use bcrypt for hashing, hash 'newPassword' before saving!
-        user.password = newPassword; 
-        await user.save();
-
-        console.log(`Password reset successful for: ${email}`);
-        res.json({ message: "Password updated successfully!" });
-
-    } catch (err) {
-        console.error("Reset Password Error:", err);
-        res.status(500).json({ error: "Server error during password reset." });
-    }
-}); 
-
+// ✅ Use PORT from environment (Render sets this automatically)
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT} 🚀`));
