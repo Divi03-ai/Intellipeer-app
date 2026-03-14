@@ -12,7 +12,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 // Example:
-const API_BASE = "https://intellipeer-app.onrender.com/api";
+const API_BASE = "https://intellipeer-app.onrender.com";
 
 const app = express();
 app.use(cors());
@@ -181,4 +181,5 @@ app.put('/api/reset-password', async (req, res) => {
     }
 }); 
 
-app.listen(5000, () => console.log("Server running on port 5000 🚀"));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
